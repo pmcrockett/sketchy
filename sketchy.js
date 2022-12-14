@@ -31,12 +31,12 @@ function init(_fieldSize, _resolution) {
             let move = {
                 right: _oldPos.x + xDist * (i / hypot),
                 left: _oldPos.x - xDist * (i / hypot),
-                down: linePos.y = _oldPos.y + yDist * (i / hypot),
+                down: _oldPos.y + yDist * (i / hypot),
                 up: _oldPos.y - yDist * (i / hypot)
             };
             if (_oldPos.x < _e.x) linePos.x = move.right;
             else linePos.x = move.left;
-            if (_oldPos.y < _e.y) move.down;
+            if (_oldPos.y < _e.y) linePos.y = move.down;
             else linePos.y = move.up;
             let lineElement = document.elementFromPoint(linePos.x, linePos.y);
             lineElement.style.backgroundColor = DRAW_COLOR;
