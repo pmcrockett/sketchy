@@ -10,3 +10,7 @@ input {
 .grid-field {
     display: grid;
 }
+
+.anim-button {
+    width: 75px;
+}
