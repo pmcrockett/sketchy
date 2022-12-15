@@ -31,7 +31,7 @@ function init(_fieldSize, _resolution) {
     drawField.height = resolution;
     drawField.style.width = `${_fieldSize}px`;
     drawField.style.height = `${_fieldSize}px`;
-    drawCtx = drawField.getContext("2d");
+    drawCtx = drawField.getContext("2d", { willReadFrequently: true });
     drawCtx.mozImageSmoothingEnabled = false;
     drawCtx.webkitImageSmoothingEnabled = false;
     drawCtx.msImageSmoothingEnabled = false;
@@ -89,6 +89,9 @@ function clickDraw(_e) {
         if (_e.button === 0) {
             clickHeld = true;
             drawPoint(_e);
+        } else if (_e.button === 2) {
+            fillCalls = 0;
+            fill(getPixelPosition(_e.pageX, _e.pageY), "rgba(0, 0, 0, 0)", DRAW_COLOR);
         }
     }
 }
@@ -136,23 +139,38 @@ function drawLine(_oldPixelPos, _e) {
     lastPixelPos = pixelPos;
 }
 
-function fill(_x, _y, _oldColor, _newColor) {
+function fill(_pixelPos, _oldColor, _newColor) {
+    //console.log(`entering fill (calls: ${fillCalls})`);
     function callSelf() {
-        fill(_x, _y - 1, _oldColor, _newColor);
-        fill(_x + 1, _y, _oldColor, _newColor);
-        fill(_x, _y + 1, _oldColor, _newColor);
-        fill(_x - 1, _y, _oldColor, _newColor);
+        fill({ x: _pixelPos.x, y: _pixelPos.y - 1 }, _oldColor, _newColor);
+        fill({ x: _pixelPos.x + 1, y: _pixelPos.y }, _oldColor, _newColor);
+        fill({ x: _pixelPos.x, y: _pixelPos.y + 1 }, _oldColor, _newColor);
+        fill({ x: _pixelPos.x - 1, y: _pixelPos.y }, _oldColor, _newColor);
     }
     fillCalls++;
-    if (!grid[_x] || !grid[_y] || grid[_x][_y].style.backgroundColor != _oldColor) {
+    if (_pixelPos.x < 0 || _pixelPos.x >= resolution || 
+        _pixelPos.y < 0 || _pixelPos.y >= resolution) {
+            //console.log(`ending fill because pixel is out of range`);
+            return;
+        }
+    let pixel = drawCtx.getImageData(_pixelPos.x, _pixelPos.y, 1, 1);
+    oldColorArray = getArrayFromRGBA(_oldColor);
+    if (pixel.data[0] != oldColorArray[0] ||
+        pixel.data[1] != oldColorArray[1] ||
+        pixel.data[2] != oldColorArray[2] ||
+        pixel.data[3] != oldColorArray[3]) {
         fillCalls--
+        //console.log(`ending fill because pixel is wrong color`);
+        //console.log(pixel.data);
+        //console.log(getArrayFromRGBA(_oldColor));
         return;
     }
     else {
-        grid[_x][_y].style.backgroundColor = _newColor;
-        animFrames.push({ square: grid[_x][_y], type: "fill" });
-        // Avoid stack overflow 
-        if (fillCalls < 1000) callSelf();
+        //console.log(`drawing fill pixel`);
+        drawCtx.fillRect(_pixelPos.x, _pixelPos.y, 1, 1);
+        //animFrames.push({ square: grid[_x][_y], type: "fill" });
+        // Avoid stack overflow and graphic lag
+        if (fillCalls < 50) callSelf();
         else {
             setTimeout(() => {
                 callSelf();
@@ -270,6 +288,28 @@ function drawCanvasImage(_context) {
     return _context;
 }
 
+function getRfromRGBA(_rgbaStr) {
+    return parseFloat(_rgbaStr.match(/(?<=^rgba?\( *)[0-9]*.?[0-9]*(?=,)/i));
+}
+
+function getGfromRGBA(_rgbaStr) {
+    return parseFloat(_rgbaStr.match(/(?<=, *)[0-9]*.?[0-9]*(?=,)/i));
+}
+
+function getBfromRGBA(_rgbaStr) {
+    return parseFloat(_rgbaStr.match(/(?<=^rgba?\( *[0-9.]*, *[0-9.]*, *)[0-9]*.?[0-9]*/i));
+}
+
+// Returns 1 if reading RGB without an alpha channel
+function getAfromRGBA(_rgbaStr) {
+    return parseFloat(_rgbaStr.match(/(?<=^rgba\([a-z,0-9 ]*)[0-9]*.?[0-9]*(?= *\)$)/i) ?? 1);
+}
+
+function getArrayFromRGBA(_rgbaStr) {
+    return [getRfromRGBA(_rgbaStr), getGfromRGBA(_rgbaStr), getBfromRGBA(_rgbaStr), 
+        getAfromRGBA(_rgbaStr)];
+}
+
 function startExport(_msg) {
     isExporting = true;
     for (let button of buttons) {
@@ -351,6 +391,10 @@ function exportGif() {
 }   , 50);
 }
 
+console.log(`r: ${getRfromRGBA("rgba(0, 1,2,0.5)")}`);
+console.log(`g: ${getGfromRGBA("rgb(0,1,2,0.5)")}`);
+console.log(`b: ${getBfromRGBA("rgba(0,1,2,0.5)")}`);
+console.log(`a: ${getAfromRGBA("rgb( 0, 5,2)")}`);
 init(getViewableSize(), resInput.getAttribute("placeholder"));
 resButton.addEventListener("click", setRes);
 resInput.addEventListener("keydown", readKey);
