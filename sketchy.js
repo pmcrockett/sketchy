@@ -86,6 +86,9 @@ function drawPoint(_e) {
     animFrames.push({ square: drawElement, type: "draw" });
 }
 
+/* This function is necessary to fix a problem where lag causes skips in what
+should be a continuously drawn line. We're playing connect-the-dots between 
+known cursor positions, basically. */
 function drawLine(_oldPos, _e) {
     let xDist = Math.abs(_e.x - _oldPos.x);
     let yDist = Math.abs(_e.y - _oldPos.y);
@@ -103,6 +106,7 @@ function drawLine(_oldPos, _e) {
         if (_oldPos.y < _e.y) linePos.y = move.down;
         else linePos.y = move.up;
         let lineElement = document.elementFromPoint(linePos.x, linePos.y);
+        if (!lineElement.classList.contains("grid-square")) continue;
         lineElement.style.backgroundColor = DRAW_COLOR;
         animFrames.push({ square: lineElement, type: "draw" });
     }
