@@ -24,7 +24,7 @@ let lineCooldown = false;
 
 function init(_fieldSize, _resolution) {
     resolution = _resolution;
-    if (isAnimating) animate();
+    if (isAnimating) toggleAnimating();
     if (gridField.querySelector(".grid-square")) {
         for (let column of grid) {
             for (let square of column) {
@@ -160,7 +160,7 @@ function setRes() {
     }
 }
 
-function startAnimating() {
+function toggleAnimating() {
     if (isExporting) return;
     if (!isAnimating && animFrames.length > 0) {
         animButton.textContent = "Stop";
@@ -340,7 +340,7 @@ gridField.addEventListener("mouseover", dragDraw);
 document.addEventListener("contextmenu", (_e) => {
     _e.preventDefault();
 });
-animButton.addEventListener("click", startAnimating);
+animButton.addEventListener("click", toggleAnimating);
 window.addEventListener("resize", (_e) => {
     setGridFieldSize(getViewableSize(), resolution);
 });
