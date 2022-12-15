@@ -40,3 +40,9 @@ button.inactive {
     color: rgb(153, 153, 153);
     padding: 8px 0 0 8px;
 }
+
+.draw-field {
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+}

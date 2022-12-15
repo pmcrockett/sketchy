@@ -4,17 +4,19 @@ const DRAW_COLOR = `rgb(90, 90, 90)`;
 let menuBar = document.querySelector(".menu-bar");
 let footer = document.querySelector(".footer");
 let gridField = document.querySelector(".grid-field");
+let drawField = document.querySelector(".draw-field");
 let resInput = document.getElementById("resolution");
 let resButton = document.querySelector(".res-button");
 let animButton = document.querySelector(".anim-button");
 let pngButton = document.querySelector(".png-button");
 let gifButton = document.querySelector(".gif-button");
 let buttons = [resButton, animButton, pngButton, gifButton];
+let drawCtx;
 let grid;
 let resolution;
 let clickHeld = false;
 let fillCalls;
-let lastMousePos = {};
+let lastPixelPos = {};
 let animFrames = [];
 let isAnimating = false;
 let animTimer;
@@ -25,6 +27,16 @@ let lineCooldown = false;
 function init(_fieldSize, _resolution) {
     resolution = _resolution;
     if (isAnimating) toggleAnimating();
+    drawField.width = resolution;
+    drawField.height = resolution;
+    drawField.style.width = `${_fieldSize}px`;
+    drawField.style.height = `${_fieldSize}px`;
+    drawCtx = drawField.getContext("2d");
+    drawCtx.mozImageSmoothingEnabled = false;
+    drawCtx.webkitImageSmoothingEnabled = false;
+    drawCtx.msImageSmoothingEnabled = false;
+    drawCtx.imageSmoothingEnabled = false;
+    /*
     if (gridField.querySelector(".grid-square")) {
         for (let column of grid) {
             for (let square of column) {
@@ -56,6 +68,18 @@ function init(_fieldSize, _resolution) {
             });
         }
     }
+    */
+}
+
+function getPixelPosition(_pageX, _pageY) {
+    //console.log(`x: ${_e.pageX}, y: ${_e.pageY}`);
+    let xPosInCanvas = _pageX - drawField.offsetLeft;
+    let yPosInCanvas = _pageY - drawField.offsetTop;
+    //console.log(`xPosInCanvas: ${xPosInCanvas}, yPosInCanvas: ${yPosInCanvas}`);
+    //console.log(`xDrawPos: ${xPosInCanvas * (resolution / getViewableSize())}, yDrawPos: ${yPosInCanvas * (resolution / getViewableSize())}`);
+    let xPixelPos = Math.floor(xPosInCanvas * (resolution / getViewableSize()));
+    let yPixelPos = Math.floor(yPosInCanvas * (resolution / getViewableSize()));
+    return { x: xPixelPos, y: yPixelPos };
 }
 
 function clickDraw(_e) {
@@ -70,48 +94,46 @@ function clickDraw(_e) {
 }
 
 function dragDraw(_e) {
+    console.log(`drag draw enter`);
     if (isExporting) return;
     if (clickHeld && !isAnimating) {
-        drawLine(lastMousePos, _e);
-        drawPoint(_e);
+        drawLine(lastPixelPos, _e);
+        console.log(`drag draw`);
+        //drawPoint(_e);
     }
 }
 
 function drawPoint(_e) {
-    let drawElement = document.elementFromPoint(_e.x, _e.y);
-    if (!drawElement.classList.contains("grid-square")) return;
-    drawElement.style.backgroundColor = DRAW_COLOR;
-    lastMousePos.x = _e.x;
-    lastMousePos.y = _e.y;
-    animFrames.push({ square: drawElement, type: "draw" });
+    let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
+    drawCtx.fillRect(pixelPos.x, pixelPos.y, 1, 1);
+    lastPixelPos = pixelPos;
+    //animFrames.push({ square: drawElement, type: "draw" });
 }
 
 /* This function is necessary to fix a problem where lag causes skips in what
 should be a continuously drawn line. We're playing connect-the-dots between 
 known cursor positions, basically. */
-function drawLine(_oldPos, _e) {
-    let xDist = Math.abs(_e.x - _oldPos.x);
-    let yDist = Math.abs(_e.y - _oldPos.y);
+function drawLine(_oldPixelPos, _e) {
+    let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
+    let xDist = Math.abs(pixelPos.x - _oldPixelPos.x);
+    let yDist = Math.abs(pixelPos.y - _oldPixelPos.y);
     let hypot = Math.sqrt(xDist ** 2 + yDist ** 2);
-    for (let i = 0; i < hypot; i += (getViewableSize() / resolution)) {
+    for (let i = 0; i < hypot; i++) {
         let linePos = {};
         let move = {
-            right: _oldPos.x + xDist * (i / hypot),
-            left: _oldPos.x - xDist * (i / hypot),
-            down: _oldPos.y + yDist * (i / hypot),
-            up: _oldPos.y - yDist * (i / hypot)
+            right: Math.floor(_oldPixelPos.x + xDist * (i / hypot)),
+            left: Math.floor(_oldPixelPos.x - xDist * (i / hypot)),
+            down: Math.floor(_oldPixelPos.y + yDist * (i / hypot)),
+            up: Math.floor(_oldPixelPos.y - yDist * (i / hypot))
         };
-        if (_oldPos.x < _e.x) linePos.x = move.right;
+        if (_oldPixelPos.x < pixelPos.x) linePos.x = move.right;
         else linePos.x = move.left;
-        if (_oldPos.y < _e.y) linePos.y = move.down;
+        if (_oldPixelPos.y < pixelPos.y) linePos.y = move.down;
         else linePos.y = move.up;
-        let lineElement = document.elementFromPoint(linePos.x, linePos.y);
-        if (!lineElement.classList.contains("grid-square")) continue;
-        lineElement.style.backgroundColor = DRAW_COLOR;
-        animFrames.push({ square: lineElement, type: "draw" });
+        drawCtx.fillRect(linePos.x, linePos.y, 1, 1);
+        //animFrames.push({ square: lineElement, type: "draw" });
     }
-    lastMousePos.x = _e.x;
-    lastMousePos.y = _e.y;
+    lastPixelPos = pixelPos;
 }
 
 function fill(_x, _y, _oldColor, _newColor) {
@@ -335,8 +357,8 @@ resInput.addEventListener("keydown", readKey);
 document.addEventListener("mouseup", (_e) => {
     if (_e.button === 0) clickHeld = false;
 });
-gridField.addEventListener("mousedown", clickDraw);
-gridField.addEventListener("mouseover", dragDraw);
+drawField.addEventListener("mousedown", clickDraw);
+drawField.addEventListener("mousemove", dragDraw);
 document.addEventListener("contextmenu", (_e) => {
     _e.preventDefault();
 });
