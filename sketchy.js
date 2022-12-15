@@ -120,7 +120,7 @@ function readKey(_e) {
 
 function setRes() {
     if (resInput.value === "") {
-        init(640, resInput.getAttribute("placeholder"));
+        init(getViewableSize(), resInput.getAttribute("placeholder"));
         resInput.setAttribute("placeholder", `${DEFAULT_RES}`);
     }
     else if (!parseInt(resInput.value) || parseInt(resInput.value) > 128 || parseInt(resInput.value) < 1) {
@@ -128,7 +128,7 @@ function setRes() {
         resInput.setAttribute("placeholder", "Enter a number between 1 and 128");
     }
     else {
-        init(640, parseInt(resInput.value));
+        init(getViewableSize(), parseInt(resInput.value));
         resInput.setAttribute("placeholder", `${DEFAULT_RES}`);
     }
 }
@@ -192,7 +192,13 @@ function setGridFieldSize(_fieldSize, _resolution) {
     gridField.style.gridAutoRows = `${_fieldSize / _resolution}px`;
 }
 
-init(window.innerHeight - menuBar.clientHeight, resInput.getAttribute("placeholder"));
+function getViewableSize() {
+    let height = window.innerHeight - menuBar.clientHeight;
+    let width = window.innerWidth;
+    return height < width ? height : width;
+}
+
+init(getViewableSize(), resInput.getAttribute("placeholder"));
 resButton.addEventListener("click", setRes);
 resInput.addEventListener("keydown", readKey);
 document.addEventListener("mouseup", (_e) => {
@@ -203,5 +209,5 @@ document.addEventListener("contextmenu", (_e) => {
 });
 animButton.addEventListener("click", animate);
 window.addEventListener("resize", (_e) => {
-    setGridFieldSize(_e.currentTarget.innerHeight - menuBar.clientHeight, resolution);
+    setGridFieldSize(getViewableSize(), resolution);
 });
