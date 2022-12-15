@@ -1,6 +1,7 @@
 * {
     box-sizing: border-box;
     margin: 0;
+    font-family: monospace;
 }
 
 input {
@@ -13,4 +14,29 @@ input {
 
 .anim-button {
     width: 75px;
+}
+
+.footer {
+    font-size: smaller;
+}
+
+button.active {
+    background-color: rgb(236, 236, 236);
+    color: black;
+}
+
+button.inactive {
+    background-color: gray;
+    color: lightgray;
+}
+
+.grid-square {
+    z-index: 500;
+}
+
+.grid-square.exporting {
+    z-index: 1000;
+    white-space: nowrap;
+    color: rgb(153, 153, 153);
+    padding: 8px 0 0 8px;
 }

@@ -2,10 +2,14 @@ const DEFAULT_RES = 32;
 const BG_COLOR = `rgb(206, 206, 206)`;
 const DRAW_COLOR = `rgb(90, 90, 90)`;
 let menuBar = document.querySelector(".menu-bar");
+let footer = document.querySelector(".footer");
 let gridField = document.querySelector(".grid-field");
 let resInput = document.getElementById("resolution");
 let resButton = document.querySelector(".res-button");
 let animButton = document.querySelector(".anim-button");
+let pngButton = document.querySelector(".png-button");
+let gifButton = document.querySelector(".gif-button");
+let buttons = [resButton, animButton, pngButton, gifButton];
 let grid;
 let resolution;
 let clickHeld = false;
@@ -14,37 +18,11 @@ let lastMousePos = {};
 let animFrames = [];
 let isAnimating = false;
 let animTimer;
+let isExporting = false;
+let exportingSquare;
+let lineCooldown = false;
 
 function init(_fieldSize, _resolution) {
-    function draw(_squarePos, _e) {
-        grid[_squarePos.x][_squarePos.y].style.backgroundColor = DRAW_COLOR;
-        lastMousePos.x = _e.x;
-        lastMousePos.y = _e.y;
-        animFrames.push({ square: grid[_squarePos.x][_squarePos.y], type: "draw" });
-    }
-    function drawLine(_oldPos, _e) {
-        let xDist = Math.abs(_e.x - _oldPos.x);
-        let yDist = Math.abs(_e.y - _oldPos.y);
-        let hypot = Math.sqrt(xDist ** 2 + yDist ** 2);
-        for (let i = 0; i < hypot; i += (_fieldSize / _resolution) / 2) {
-            let linePos = {};
-            let move = {
-                right: _oldPos.x + xDist * (i / hypot),
-                left: _oldPos.x - xDist * (i / hypot),
-                down: _oldPos.y + yDist * (i / hypot),
-                up: _oldPos.y - yDist * (i / hypot)
-            };
-            if (_oldPos.x < _e.x) linePos.x = move.right;
-            else linePos.x = move.left;
-            if (_oldPos.y < _e.y) linePos.y = move.down;
-            else linePos.y = move.up;
-            let lineElement = document.elementFromPoint(linePos.x, linePos.y);
-            lineElement.style.backgroundColor = DRAW_COLOR;
-            animFrames.push({ square: lineElement, type: "draw" });
-        }
-        lastMousePos.x = _e.x;
-        lastMousePos.y = _e.y;
-    }
     resolution = _resolution;
     if (isAnimating) animate();
     if (gridField.querySelector(".grid-square")) {
@@ -61,31 +39,75 @@ function init(_fieldSize, _resolution) {
         grid[i] = [];
         for (let j = 0; j < _resolution; j++) {
             grid[i][j] = document.createElement("div");
-            grid[i][j].setAttribute("class", "grid-square");
+            grid[i][j].classList.add("grid-square");
             grid[i][j].style.backgroundColor = BG_COLOR;
-            grid[i][j].style.gridColumnStart = j + 1;
-            grid[i][j].style.gridColumnEnd = j + 2;
+            grid[i][j].style.gridRowStart = j + 1;
+            grid[i][j].style.gridRowEnd = j + 2;
             gridField.appendChild(grid[i][j]);
             grid[i][j].addEventListener("mousedown", (_e) => {
+                if (isExporting) return;
                 _e.preventDefault();
                 if (!isAnimating) {
-                    if (_e.button === 0) {
-                        clickHeld = true;
-                        draw({ x: i, y: j }, _e);
-                    } else if (_e.button === 2) {
+                    if (_e.button === 2) {
                         fillCalls = 0;
                         fill(i, j, BG_COLOR, DRAW_COLOR);
                     }
                 }
             });
-            grid[i][j].addEventListener("mouseover", (_e) => {
-                if (clickHeld && !isAnimating) {
-                    drawLine(lastMousePos, _e);
-                    draw({ x: i, y: j }, _e);
-                }
-            });
         }
     }
+}
+
+function clickDraw(_e) {
+    if (isExporting) return;
+    _e.preventDefault();
+    if (!isAnimating) {
+        if (_e.button === 0) {
+            clickHeld = true;
+            drawPoint(_e);
+        }
+    }
+}
+
+function dragDraw(_e) {
+    if (isExporting) return;
+    if (clickHeld && !isAnimating) {
+        drawLine(lastMousePos, _e);
+        drawPoint(_e);
+    }
+}
+
+function drawPoint(_e) {
+    let drawElement = document.elementFromPoint(_e.x, _e.y);
+    if (!drawElement.classList.contains("grid-square")) return;
+    drawElement.style.backgroundColor = DRAW_COLOR;
+    lastMousePos.x = _e.x;
+    lastMousePos.y = _e.y;
+    animFrames.push({ square: drawElement, type: "draw" });
+}
+
+function drawLine(_oldPos, _e) {
+    let xDist = Math.abs(_e.x - _oldPos.x);
+    let yDist = Math.abs(_e.y - _oldPos.y);
+    let hypot = Math.sqrt(xDist ** 2 + yDist ** 2);
+    for (let i = 0; i < hypot; i += (getViewableSize() / resolution)) {
+        let linePos = {};
+        let move = {
+            right: _oldPos.x + xDist * (i / hypot),
+            left: _oldPos.x - xDist * (i / hypot),
+            down: _oldPos.y + yDist * (i / hypot),
+            up: _oldPos.y - yDist * (i / hypot)
+        };
+        if (_oldPos.x < _e.x) linePos.x = move.right;
+        else linePos.x = move.left;
+        if (_oldPos.y < _e.y) linePos.y = move.down;
+        else linePos.y = move.up;
+        let lineElement = document.elementFromPoint(linePos.x, linePos.y);
+        lineElement.style.backgroundColor = DRAW_COLOR;
+        animFrames.push({ square: lineElement, type: "draw" });
+    }
+    lastMousePos.x = _e.x;
+    lastMousePos.y = _e.y;
 }
 
 function fill(_x, _y, _oldColor, _newColor) {
@@ -115,6 +137,7 @@ function fill(_x, _y, _oldColor, _newColor) {
 }
 
 function readKey(_e) {
+    if (isExporting) return;
     if (_e.key === "Enter") setRes();
 }
 
@@ -133,11 +156,12 @@ function setRes() {
     }
 }
 
-function animate() {
+function startAnimating() {
+    if (isExporting) return;
     if (!isAnimating && animFrames.length > 0) {
         animButton.textContent = "Stop";
         isAnimating = true;
-        drawFrame(0);
+        animate(0);
     } else {
         animButton.textContent = "Animate!";
         isAnimating = false;
@@ -168,9 +192,13 @@ function drawFrame(_frameNum) {
             break;
         }
     }
+    return nextFrame;
+}
+
+function animate(_frame) {
     animTimer = window.setTimeout(() => {
-        drawFrame(nextFrame);
-    }, 15);
+        animate(drawFrame(_frame));
+    }, 18);
 }
 
 function resetGridColor() {
@@ -193,9 +221,108 @@ function setGridFieldSize(_fieldSize, _resolution) {
 }
 
 function getViewableSize() {
-    let height = window.innerHeight - menuBar.clientHeight;
+    let height = window.innerHeight - menuBar.clientHeight - footer.clientHeight;
     let width = window.innerWidth;
     return height < width ? height : width;
+}
+
+function createCanvas(_width, _height, _class) {
+    let canvas = document.createElement("canvas");
+    canvas.width = _width;
+    canvas.height = _height;
+    if (_class) canvas.class = _class;
+    return canvas;
+}
+
+function drawCanvasImage(_context) {
+    for (let x = 0; x < grid.length; x++) {
+        for (let y = 0; y < grid[x].length; y++) {
+            _context.fillStyle = grid[x][y].style.backgroundColor;
+            _context.fillRect(x, y, 1, 1);
+        }
+    }
+    return _context;
+}
+
+function startExport(_msg) {
+    isExporting = true;
+    for (let button of buttons) {
+        button.classList.replace("active", "inactive");
+        button.disabled = true;
+    }
+    let rRegex = /(?<=^rgb\()[0-9]*(?=,)/i;
+    let gRegex = /(?<=, )[0-9]*(?=,)/i;
+    let bRegex = /(?<=, )[0-9]*(?=\)$)/i;
+    let darken = 10;
+    for (let x = 0; x < grid.length; x++) {
+        for (let y = 0; y < grid[x].length; y++) {
+            let oldColor = grid[x][y].style.backgroundColor;
+            grid[x][y].style.backgroundColor = `rgb(${oldColor.match(rRegex) / darken}, 
+                ${oldColor.match(gRegex) / darken}, ${oldColor.match(bRegex) / darken})`;
+        }
+    }
+    grid[0][0].classList.add("exporting");
+    grid[0][0].style.fontSize = `${getViewableSize() / 26}px`;
+    grid[0][0].textContent = _msg;
+}
+
+function endExport() {
+    grid[0][0].classList.remove("exporting");
+    grid[0][0].textContent = "";
+    for (let button of buttons) {
+        button.classList.replace("inactive", "active");
+        button.removeAttribute("disabled");
+    }
+    setTimeout(() => {
+        isExporting = false;
+    }, 500);
+}
+
+function exportPng() {
+    if (isExporting) return;
+    startExport("Exporting ...");
+    /* Timeout gives the visual changes from startExport() time to become visible
+    before the export process hangs the graphics updating */
+    setTimeout(() => {
+        let pngCanvas = createCanvas(resolution, resolution, "png-canvas");
+        let context = pngCanvas.getContext("2d");
+        nextFrame = 0;
+        do {
+            nextFrame = drawFrame(nextFrame);
+        } while (nextFrame > 0);
+        context = drawCanvasImage(context);
+        let dl = document.createElement("a");
+        dl.download = "sketchy_image.png";
+        dl.href = pngCanvas.toDataURL();
+        dl.click();
+        dl.remove();
+        pngCanvas.remove();
+        endExport();
+    }, 50);
+}
+
+function exportGif() {
+    if (isExporting) return;
+    startExport("Exporting ... (this may take a long time!)");
+    /* Timeout gives the visual changes from startExport() time to become visible
+    before the export process hangs the graphics updating */
+    setTimeout(() => {
+        let gifCanvas = createCanvas(resolution, resolution, "gif-canvas");
+        let context = gifCanvas.getContext("2d", { willReadFrequently: true });
+        let encoder = new GIFEncoder();
+        encoder.setRepeat(0);
+        encoder.setDelay(10);
+        encoder.start();
+        let nextFrame = 0
+        do {
+            nextFrame = drawFrame(nextFrame);
+            encoder.addFrame(drawCanvasImage(context));
+        } while (nextFrame > 0);
+        encoder.finish();
+        encoder.download("sketchy_image.gif");
+        gifCanvas.remove();
+        endExport();
+}   , 50);
 }
 
 init(getViewableSize(), resInput.getAttribute("placeholder"));
@@ -204,10 +331,14 @@ resInput.addEventListener("keydown", readKey);
 document.addEventListener("mouseup", (_e) => {
     if (_e.button === 0) clickHeld = false;
 });
+gridField.addEventListener("mousedown", clickDraw);
+gridField.addEventListener("mouseover", dragDraw);
 document.addEventListener("contextmenu", (_e) => {
     _e.preventDefault();
 });
-animButton.addEventListener("click", animate);
+animButton.addEventListener("click", startAnimating);
 window.addEventListener("resize", (_e) => {
     setGridFieldSize(getViewableSize(), resolution);
 });
+pngButton.addEventListener("click", exportPng);
+gifButton.addEventListener("click", exportGif);
