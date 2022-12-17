@@ -8,6 +8,11 @@ input {
     width: 224px;
 }
 
+.content {
+    display: flex;
+    flex-direction: column;
+}
+
 .grid-field {
     display: grid;
 }
@@ -45,4 +50,9 @@ button.inactive {
     image-rendering: -moz-crisp-edges;
     image-rendering: -webkit-crisp-edges;
     image-rendering: pixelated;
+}
+
+.overlay {
+    position: fixed;
+    z-index: 1500;
 }
