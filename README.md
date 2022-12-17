@@ -1,7 +1,9 @@
-# odin-etch-a-sketch
-Etch-A-Sketch project from The Odin Project
+# sketchy
+Simple drawing program
 
-Sketchy improves on the Odin version by adding click-and-drag-to-draw rather 
-than hover-to-draw, ensuring continuous lines even with screen lag, adding 
-flood fill (right click), implementing an animate mode that redraws the image, 
-and auto-resizing the canvas when the window size changes.
+Left click to draw; right click to fill.
+
+Sketchy began as a project from The Odin Project but has grown substantially 
+beyond the original scope. Most notably, Sketchy uses a canvas element rather 
+than divs to represent pixels, can create animations by cycling through the 
+drawing history, and can export .png and .gif files.
