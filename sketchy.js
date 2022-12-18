@@ -20,6 +20,8 @@ let animButton = document.querySelector(".anim-button");
 let pngButton = document.querySelector(".png-button");
 let gifButton = document.querySelector(".gif-button");
 let gridButton = document.querySelector(".grid-button");
+let undoButton = document.querySelector(".undo-button");
+let redoButton = document.querySelector(".redo-button");
 let buttons = [resButton, animButton, pngButton, gifButton, gridButton];
 let drawCtx;
 let basisCtx;
@@ -38,6 +40,7 @@ let isExporting = false;
 let exportingSquare;
 let lineCooldown = false;
 let fillPixels = [];
+let redoStack = [];
 
 class StateManager {
     constructor() {
@@ -130,11 +133,15 @@ function clickDraw(_e) {
         if (_e.button === 0) {
             clickHeld = true;
             drawPoint(_e, "rgba(0, 0, 0, 1)");
+            redoStack = [];
         } else if (_e.button === 2) {
             fillCalls = 1;
             fillPixels = [];
-            fill(getPixelPosition(_e.pageX, _e.pageY), "rgba(255, 255, 255, 1)", "rgba(0, 0, 0, 1)");
-            //animFrames.push({ pixel: pixels, type: "fill" });
+            let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
+            let oldColorArr = drawCtx.getImageData(pixelPos.x, pixelPos.y, 1, 1).data;
+            let oldColor = getRGBAFromArray(oldColorArr, true);
+            fill(pixelPos, oldColor, "rgba(0, 0, 0, 1)");
+            redoStack = [];
         }
     }
 }
@@ -146,6 +153,7 @@ function dragDraw(_e) {
         (animFrames[animFrames.length - 1].type === "drawLine" || getPixelPosition() != lastPixelPos)) {
         console.log(animFrames[animFrames.length - 1].type);
         drawLine(lastPixelPos, _e, "rgba(0, 0, 0, 1)");
+        redoStack = [];
         //console.log(`drag draw`);
         //drawPoint(_e);
     }
@@ -201,6 +209,11 @@ function drawLine(_oldPixelPos, _e, _color) {
 
 function fill(_pixelPos, _oldColor, _newColor) {
     //console.log(`entering fill (calls: ${fillCalls})`);
+    if (_oldColor === _newColor) {
+        fillPixels = [{ position: _pixelPos, color: _newColor }];
+        closeFillCall();
+        return;
+    }
     function callSelf() {
         //let returnArr = [];
         let dirArr = [{ x: _pixelPos.x, y: _pixelPos.y - 1 }, 
@@ -316,7 +329,7 @@ function toggleAnimating() {
     }
 }
 
-function drawFrame(_frameNum, _context) {
+function drawFrame(_frameNum, _context, _drawAllSubframes = false) {
     function drawSubframes(_subframeCount) {
         let loopLimit = Math.min(animFrames[nextFrame].pixel.length - 1, nextSubframe + _subframeCount);
         for (let i = nextSubframe; i <= loopLimit; i++) {
@@ -338,18 +351,23 @@ function drawFrame(_frameNum, _context) {
     }
     console.log(animFrames[nextFrame].type);
     if (animFrames[nextFrame].type === "init") {
-        return [++nextFrame, 0];
+        console.log(`incrementing nextFrame`);
+        nextFrame++;
     } else if (animFrames[nextFrame].type === "fill") {
-        drawSubframes(Math.ceil(resolution * 1.5));
+        if (_drawAllSubframes) drawSubframes(animFrames[nextFrame].pixel.length - 1);
+        else drawSubframes(Math.ceil(resolution * 1.5));
     } else if (animFrames[nextFrame].type === "drawPoint") {
         drawAnimPoint(animFrames[nextFrame].pixel[0], _context);
         nextFrame++;
     } else if (animFrames[nextFrame].type === "drawLine") {
-        drawSubframes(Math.ceil(resolution * 0.1));
+        if (_drawAllSubframes) drawSubframes(animFrames[nextFrame].pixel.length - 1);
+        else drawSubframes(Math.ceil(resolution * 0.1));
     }
     if (nextFrame >= animFrames.length) {
+        console.log(`nextFrame is 0`);
         nextFrame = 0;
     }
+    console.log(`returning nextFrame as ${nextFrame}; animFrames.length is ${animFrames.length}`);
     return [nextFrame, nextSubframe];
 }
 
@@ -417,6 +435,12 @@ function getAfromRGBA(_rgbaStr) {
 function getArrayFromRGBA(_rgbaStr) {
     return [getRfromRGBA(_rgbaStr), getGfromRGBA(_rgbaStr), getBfromRGBA(_rgbaStr), 
         getAfromRGBA(_rgbaStr)];
+}
+
+function getRGBAFromArray(_arr, _alphaIs255 = false) {
+    if (_alphaIs255) {
+        return `rgba(${_arr[0]}, ${_arr[1]}, ${_arr[2]}, ${Math.round(_arr[3] / 255)})`;
+    } else return `rgba(${_arr[0]}, ${_arr[1]}, ${_arr[2]}, ${_arr[3]})`;
 }
 
 function startExport(_msg) {
@@ -556,9 +580,28 @@ function updateGridPoint(_pixelPos) {
             pixDat[i] = 0;
         } else pixDat[i] = 255 - pixDat[i];
     }
-    overlayCtx.fillStyle = `rgba(${pixDat[0]}, ${pixDat[1]}, ${pixDat[2]}, 1)`;
+    pixDat[3] = 1;
+    overlayCtx.fillStyle = getRGBAFromArray(pixDat);
     overlayCtx.fillRect(drawPosX, drawPosY, 1, increment);
     overlayCtx.fillRect(drawPosX, drawPosY, increment, 1);
+}
+
+function undo() {
+    if (animFrames.length > 1) {
+        redoStack.push(animFrames.pop());
+        console.log(animFrames.length);
+        let nextFrame = [0, 0];
+        do {
+            nextFrame = drawFrame(nextFrame, drawCtx, true);
+        } while (nextFrame[0] > 0 && animFrames.length > 1);
+    }
+}
+
+function redo() {
+    if (redoStack.length > 0) {
+        animFrames.push(redoStack.pop());
+        drawFrame([animFrames.length - 1, 0], drawCtx, true);
+    }
 }
 
 console.log(`r: ${getRfromRGBA("rgba(0, 1,2,0.5)")}`);
@@ -587,3 +630,5 @@ window.addEventListener("resize", (_e) => {
 window.addEventListener("scroll", setOverlayPosition);
 pngButton.addEventListener("click", exportPng);
 gifButton.addEventListener("click", exportGif);
+undoButton.addEventListener("click", undo);
+redoButton.addEventListener("click", redo);
