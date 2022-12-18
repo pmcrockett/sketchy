@@ -168,10 +168,10 @@ function drawPoint(_e, _color) {
     animFrames.push({ pixel: [{ position: pixelPos, color: _color }], type: "drawPoint" });
 }
 
-function drawAnimPoint(_pixel, _context) {
+function drawAnimPoint(_pixel, _context, _updateGrid = true) {
     _context.fillStyle = _pixel.color;
     _context.fillRect(_pixel.position.x, _pixel.position.y, 1, 1);
-    if (gridButton.classList.contains("depressed")) updateGridPoint(_pixel.position);
+    if (_updateGrid && gridButton.classList.contains("depressed")) updateGridPoint(_pixel.position);
 }
 
 /* This function is necessary to fix a problem where lag causes skips in what
@@ -329,11 +329,11 @@ function toggleAnimating() {
     }
 }
 
-function drawFrame(_frameNum, _context, _drawAllSubframes = false) {
+function drawFrame(_frameNum, _context, _drawAllSubframes = false, _updateGrid = true) {
     function drawSubframes(_subframeCount) {
         let loopLimit = Math.min(animFrames[nextFrame].pixel.length - 1, nextSubframe + _subframeCount);
         for (let i = nextSubframe; i <= loopLimit; i++) {
-            drawAnimPoint(animFrames[nextFrame].pixel[i], _context);
+            drawAnimPoint(animFrames[nextFrame].pixel[i], _context, _updateGrid);
             if (i + 1 < animFrames[nextFrame].pixel.length) {
                 nextSubframe = i + 1;
             } else {
@@ -346,7 +346,7 @@ function drawFrame(_frameNum, _context, _drawAllSubframes = false) {
     let nextSubframe = _frameNum[1];
     if (nextFrame === 0) {
         _context.drawImage(animBasis, 0, 0);
-        if (gridButton.classList.contains("depressed")) showGrid();
+        if (_updateGrid && gridButton.classList.contains("depressed")) showGrid();
         //console.log(`reset canvas to animBasis`);
     }
     console.log(animFrames[nextFrame].type);
@@ -357,7 +357,7 @@ function drawFrame(_frameNum, _context, _drawAllSubframes = false) {
         if (_drawAllSubframes) drawSubframes(animFrames[nextFrame].pixel.length - 1);
         else drawSubframes(Math.ceil(resolution * 1.5));
     } else if (animFrames[nextFrame].type === "drawPoint") {
-        drawAnimPoint(animFrames[nextFrame].pixel[0], _context);
+        drawAnimPoint(animFrames[nextFrame].pixel[0], _context, _updateGrid);
         nextFrame++;
     } else if (animFrames[nextFrame].type === "drawLine") {
         if (_drawAllSubframes) drawSubframes(animFrames[nextFrame].pixel.length - 1);
@@ -592,8 +592,9 @@ function undo() {
         console.log(animFrames.length);
         let nextFrame = [0, 0];
         do {
-            nextFrame = drawFrame(nextFrame, drawCtx, true);
+            nextFrame = drawFrame(nextFrame, drawCtx, true, false);
         } while (nextFrame[0] > 0 && animFrames.length > 1);
+        if (gridButton.classList.contains("depressed")) showGrid();
     }
 }
 
