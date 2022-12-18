@@ -15,15 +15,14 @@
             <div class="menu-bar">
                 <label for="resolution">Resolution:</label>
                 <input type="text" id="resolution" placeholder="32">
-                <button class="res-button active">Reset</button>
-                <button class="anim-button active">Animate!</button>
-                <button class="png-button active">Save image as .png...</button>
-                <button class="gif-button active">Save animation as .gif...</button>
+                <button class="res-button enabled">Reset</button>
+                <button class="anim-button enabled">Animate!</button>
+                <button class="png-button enabled">Save image as .png...</button>
+                <button class="gif-button enabled">Save animation as .gif...</button>
+                <button class="grid-button enabled">Grid</button>
             </div>
             <canvas class="draw-field">This is where I'd put my canvases ... IF I HAD ANY</canvas>
             <canvas class="overlay">This is where I'd put my canvases ... IF I HAD ANY</canvas>
-            <div class="grid-field">
-            </div>
             <div class="footer">Uses Kevin Kwok's <a href="https://github.com/antimatter15/jsgif">jsgif</a> (<a href="https://github.com/antimatter15/jsgif/blob/master/LICENSE">MIT license</a>) for .gif export </div>
         </div>
     </body>

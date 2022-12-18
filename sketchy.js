@@ -1,8 +1,6 @@
 /* TODO:
 Add multi-color support
 More flexible resolutions
-Refactor export for canvas
-Grid lines
 Undo/redo
 Zoom
 Layers?
@@ -14,7 +12,6 @@ const BG_COLOR = `rgb(206, 206, 206)`;
 const DRAW_COLOR = `rgb(90, 90, 90)`;
 let menuBar = document.querySelector(".menu-bar");
 let footer = document.querySelector(".footer");
-let gridField = document.querySelector(".grid-field");
 let drawField = document.querySelector(".draw-field");
 let overlayCanvas = document.querySelector(".overlay");
 let resInput = document.getElementById("resolution");
@@ -22,7 +19,8 @@ let resButton = document.querySelector(".res-button");
 let animButton = document.querySelector(".anim-button");
 let pngButton = document.querySelector(".png-button");
 let gifButton = document.querySelector(".gif-button");
-let buttons = [resButton, animButton, pngButton, gifButton];
+let gridButton = document.querySelector(".grid-button");
+let buttons = [resButton, animButton, pngButton, gifButton, gridButton];
 let drawCtx;
 let basisCtx;
 let overlayCtx;
@@ -81,14 +79,14 @@ class StateManager {
 
 function disableButtons() {
     for (let button of buttons) {
-        button.classList.replace("active", "inactive");
+        button.classList.remove("enabled");
         button.disabled = true;
     }
 }
 
 function enablebuttons() {
     for (let button of buttons) {
-        button.classList.replace("inactive", "active");
+        button.classList.add("enabled");
         button.removeAttribute("disabled");
     }
 }
@@ -98,7 +96,6 @@ function init(_fieldSize, _resolution, _color) {
     if (stateManager.isAnimating) toggleAnimating();
     drawField.width = resolution;
     drawField.height = resolution;
-    setGridFieldSize(_fieldSize);
     drawCtx = drawField.getContext("2d", { willReadFrequently: true });
     drawCtx.mozImageSmoothingEnabled = false;
     drawCtx.webkitImageSmoothingEnabled = false;
@@ -106,49 +103,13 @@ function init(_fieldSize, _resolution, _color) {
     drawCtx.imageSmoothingEnabled = false;
     drawCtx.fillStyle = _color;
     drawCtx.fillRect(0, 0, resolution, resolution);
-    //animBasis = createCanvas(resolution, resolution, "anim-basis");
-    overlayCanvas.width = _fieldSize;
-    overlayCanvas.height = _fieldSize;
     overlayCtx = overlayCanvas.getContext("2d");
     overlayCtx.clearRect(0, 0, _fieldSize, _fieldSize);
+    setDrawFieldSize(_fieldSize);
     animBasis = new OffscreenCanvas(resolution, resolution);
     basisCtx = animBasis.getContext("2d");
     basisCtx.drawImage(drawField, 0, 0);
     animFrames = [{ pixel: [], type: "init" }];
-
-    /*
-    if (gridField.querySelector(".grid-square")) {
-        for (let column of grid) {
-            for (let square of column) {
-                gridField.removeChild(square);
-            }
-        }
-    }
-    grid = [];
-    setGridFieldSize(_fieldSize, resolution);
-    animFrames = [];
-    for (let i = 0; i < _resolution; i++) {
-        grid[i] = [];
-        for (let j = 0; j < _resolution; j++) {
-            grid[i][j] = document.createElement("div");
-            grid[i][j].classList.add("grid-square");
-            grid[i][j].style.backgroundColor = BG_COLOR;
-            grid[i][j].style.gridRowStart = j + 1;
-            grid[i][j].style.gridRowEnd = j + 2;
-            gridField.appendChild(grid[i][j]);
-            grid[i][j].addEventListener("mousedown", (_e) => {
-                if (isExporting) return;
-                _e.preventDefault();
-                if (!isAnimating) {
-                    if (_e.button === 2) {
-                        fillCalls = 0;
-                        fill(i, j, BG_COLOR, DRAW_COLOR);
-                    }
-                }
-            });
-        }
-    }
-    */
 }
 
 function getPixelPosition(_pageX, _pageY) {
@@ -194,6 +155,7 @@ function drawPoint(_e, _color) {
     let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
     drawCtx.fillStyle = _color;
     drawCtx.fillRect(pixelPos.x, pixelPos.y, 1, 1);
+    if (gridButton.classList.contains("depressed")) updateGridPoint(pixelPos);
     lastPixelPos = pixelPos;
     animFrames.push({ pixel: [{ position: pixelPos, color: _color }], type: "drawPoint" });
 }
@@ -201,6 +163,7 @@ function drawPoint(_e, _color) {
 function drawAnimPoint(_pixel, _context) {
     _context.fillStyle = _pixel.color;
     _context.fillRect(_pixel.position.x, _pixel.position.y, 1, 1);
+    if (gridButton.classList.contains("depressed")) updateGridPoint(_pixel.position);
 }
 
 /* This function is necessary to fix a problem where lag causes skips in what
@@ -229,6 +192,7 @@ function drawLine(_oldPixelPos, _e, _color) {
         if (_oldPixelPos.y < pixelPos.y) linePos.y = move.down;
         else linePos.y = move.up;
         drawCtx.fillRect(linePos.x, linePos.y, 1, 1);
+        if (gridButton.classList.contains("depressed")) updateGridPoint(linePos);
         pixels.push({ position: linePos, color: _color });
     }
     lastPixelPos = pixelPos;
@@ -299,6 +263,7 @@ function fill(_pixelPos, _oldColor, _newColor) {
         stateManager.isFilling = true;
         drawCtx.fillStyle = _newColor;
         drawCtx.fillRect(_pixelPos.x, _pixelPos.y, 1, 1);
+        if (gridButton.classList.contains("depressed")) updateGridPoint(_pixelPos);
         //returnPixel.push({ position: _pixelPos, color: _newColor });
         fillCalls += 4;
         // Avoid stack overflow and graphic lag
@@ -321,7 +286,7 @@ function readKey(_e) {
 
 function setRes() {
     if (resInput.value === "") {
-        init(getViewableSize(), resInput.getAttribute("placeholder"), "rgba(255, 255, 255, 1)");
+        init(getViewableSize(), parseInt(resInput.getAttribute("placeholder")), "rgba(255, 255, 255, 1)");
         resInput.setAttribute("placeholder", `${DEFAULT_RES}`);
     }
     else if (!parseInt(resInput.value) || parseInt(resInput.value) > 128 || parseInt(resInput.value) < 1) {
@@ -347,6 +312,7 @@ function toggleAnimating() {
         stateManager.isAnimating = false;
         window.clearTimeout(animTimer);
         drawCtx.drawImage(bufferCanvas, 0, 0);
+        if (gridButton.classList.contains("depressed")) showGrid();
     }
 }
 
@@ -367,6 +333,7 @@ function drawFrame(_frameNum, _context) {
     let nextSubframe = _frameNum[1];
     if (nextFrame === 0) {
         _context.drawImage(animBasis, 0, 0);
+        if (gridButton.classList.contains("depressed")) showGrid();
         //console.log(`reset canvas to animBasis`);
     }
     console.log(animFrames[nextFrame].type);
@@ -392,12 +359,18 @@ function animate(_frame) {
     }, 94);
 }
 
-function setGridFieldSize(_fieldSize) {
+function setDrawFieldSize(_fieldSize) {
     drawField.style.width = `${_fieldSize}px`;
     drawField.style.height = `${_fieldSize}px`;
+    overlayCanvas.width = _fieldSize;
+    overlayCanvas.height = _fieldSize;
     overlayCanvas.style.width = `${_fieldSize}px`;
     overlayCanvas.style.height = `${_fieldSize}px`;
     setOverlayPosition();
+    if (gridButton.classList.contains("depressed")) {
+        hideGrid();
+        showGrid();
+    }
 }
 
 function getViewableSize() {
@@ -538,13 +511,63 @@ function setOverlayPosition() {
     overlayCanvas.style.transform = `translate(0, ${menuBar.clientHeight - window.scrollY}px)`;
 }
 
+function toggleGrid() {
+    if (stateManager.isBlockingInput()) return;
+    if (gridButton.classList.contains("depressed")) {
+        gridButton.classList.remove("depressed");
+        hideGrid();
+    } else {
+        gridButton.classList.add("depressed");
+        overlayCtx.fillStyle = ("rgba(0, 0, 0, 0.7)")
+        showGrid();
+    }
+}
+
+function showGrid() {
+    for (let x = 0; x <= resolution; x++) {
+        for (let y = 0; y <= resolution; y++) {
+            updateGridPoint({ x: x, y: y });
+        }
+        //let drawPos = Math.round((viewable - 1) * (x / resolution));
+        //overlayCtx.fillRect(drawPos, 0, 1, viewable);
+    }
+    /*
+    for (let y = 0; y <= resolution; y++) {
+        let drawPos = Math.round((viewable - 1) * (y / resolution));
+        overlayCtx.fillRect(0, drawPos, viewable, 1);
+    }
+    */
+}
+
+
+function hideGrid() {
+    let viewable = getViewableSize();
+    overlayCtx.clearRect(0, 0, viewable, viewable);
+}
+
+function updateGridPoint(_pixelPos) {
+    let viewable = getViewableSize();
+    let increment = (viewable) * (1.02 / resolution);
+    let drawPosX = Math.round((viewable - 1) * (_pixelPos.x / resolution));
+    let drawPosY = Math.round((viewable - 1) * (_pixelPos.y / resolution));
+    let pixDat = drawCtx.getImageData(_pixelPos.x, _pixelPos.y, 1, 1).data;
+    for (let i = 0; i < 3; i++) {
+        if (_pixelPos.x === resolution || _pixelPos.y === resolution) {
+            pixDat[i] = 0;
+        } else pixDat[i] = 255 - pixDat[i];
+    }
+    overlayCtx.fillStyle = `rgba(${pixDat[0]}, ${pixDat[1]}, ${pixDat[2]}, 1)`;
+    overlayCtx.fillRect(drawPosX, drawPosY, 1, increment);
+    overlayCtx.fillRect(drawPosX, drawPosY, increment, 1);
+}
+
 console.log(`r: ${getRfromRGBA("rgba(0, 1,2,0.5)")}`);
 console.log(`g: ${getGfromRGBA("rgb(0,1,2,0.5)")}`);
 console.log(`b: ${getBfromRGBA("rgba(0,1,2,0.5)")}`);
 console.log(`a: ${getAfromRGBA("rgb( 0, 5,2)")}`);
 const stateManager = new StateManager();
 console.log(stateManager.isBlockingInput());
-init(getViewableSize(), resInput.getAttribute("placeholder"), "rgba(255, 255, 255, 1)");
+init(getViewableSize(), parseInt(resInput.getAttribute("placeholder")), "rgba(255, 255, 255, 1)");
 resButton.addEventListener("click", setRes);
 resInput.addEventListener("keydown", readKey);
 document.addEventListener("mouseup", (_e) => {
@@ -557,8 +580,9 @@ document.addEventListener("contextmenu", (_e) => {
     _e.preventDefault();
 });
 animButton.addEventListener("click", toggleAnimating);
+gridButton.addEventListener("click", toggleGrid);
 window.addEventListener("resize", (_e) => {
-    setGridFieldSize(getViewableSize());
+    setDrawFieldSize(getViewableSize());
 });
 window.addEventListener("scroll", setOverlayPosition);
 pngButton.addEventListener("click", exportPng);
