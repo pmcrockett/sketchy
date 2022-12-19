@@ -1,5 +1,4 @@
 /* TODO:
-Add multi-color support
 More flexible resolutions
 Zoom
 Layers?
@@ -14,6 +13,7 @@ let menuBar = document.querySelector(".menu-bar");
 let footer = document.querySelector(".footer");
 let drawField = document.querySelector(".draw-field");
 let overlayCanvas = document.querySelector(".overlay");
+let canvasContainer = document.querySelector(".canvases");
 let palette = document.querySelector(".palette");
 let resInput = document.getElementById("resolution");
 let resButton = document.querySelector(".res-button");
@@ -25,7 +25,7 @@ let undoButton = document.querySelector(".undo-button");
 let redoButton = document.querySelector(".redo-button");
 let rerollButton = document.querySelector(".reroll-button");
 let buttons = [resButton, animButton, pngButton, gifButton, gridButton, 
-        undoButton, redoButton];
+        undoButton, redoButton, rerollButton];
 let drawCtx;
 let basisCtx;
 let overlayCtx;
@@ -144,54 +144,73 @@ function initPalette() {
         button.classList.add(`color`);
         button.classList.add(`${i}`);
         palette.appendChild(button);
+        if (isMobile ) {
+            button.classList.add(`mobile`);
+            button.style.height = `${button.clientWidth}px`;
+        }
         colorButtons.push(button);
         button.addEventListener("click", updatePaletteIdx);
+    }
+    if (isMobile) {
+        palette.style.width = `${colorButtons[0].clientWidth * 8}px`;
+        palette.style.height = `${colorButtons[0].clientHeight * 4}px`;
+    } else {
+        palette.style.width = `${colorButtons[0].clientWidth * 4}px`;
+        palette.style.height = `${colorButtons[0].clientHeight * 8}px`;
     }
     initColors();
     updatePaletteIdx({ target: colorButtons[0] });
 }
 
-function initColors() {
-    let types = ["iColor", "jColor", "exponentColor"];
-    let rndOrder = [];
-    for (let i = 3; i > 0; i--) {
-        rndOrder.push(...types.splice(Math.floor(Math.random() * i), 1));
-    }
-    console.log(rndOrder);
-    let exponent = Math.random() + 0.5;
-    if (exponent >= 1) {
-        exponent = (exponent - 1) * 8 + 1;
-    }
-    console.log(exponent);
-    let buttonIdx = 0;
-    for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 8; j++) {
-            let colorArr = [];
-            for (let type of rndOrder) {
-                if (type === "iColor") {
-                    colorArr.push(Math.round(255 * (i / 3)));
-                } else if (type === "jColor") {
-                    colorArr.push(Math.round(255 * (j / 7)));
-                } else {
-                    colorArr.push(Math.round(255 * ((j / 7) ** exponent)));
+function initColors(_newColorValues) {
+    //console.log(_newColorValues);
+    if (!_newColorValues) {
+        let types = ["iColor", "jColor", "exponentColor"];
+        let rndOrder = [];
+        for (let i = 3; i > 0; i--) {
+            rndOrder.push(...types.splice(Math.floor(Math.random() * i), 1));
+        }
+        //console.log(rndOrder);
+        let exponent = Math.random() + 0.5;
+        if (exponent >= 1) {
+            exponent = (exponent - 1) * 8 + 1;
+        }
+        //console.log(exponent);
+        let buttonIdx = 0;
+        for (let i = 0; i < 4; i++) {
+            for (let j = 0; j < 8; j++) {
+                let colorArr = [];
+                for (let type of rndOrder) {
+                    if (type === "iColor") {
+                        colorArr.push(Math.round(255 * (i / 3)));
+                    } else if (type === "jColor") {
+                        colorArr.push(Math.round(255 * (j / 7)));
+                    } else {
+                        colorArr.push(Math.round(255 * ((j / 7) ** exponent)));
+                    }
                 }
+                colorArr.push(1);
+                let buttonColor = getRGBAFromArray(colorArr, false);
+                //console.log(buttonColor);
+                colorButtons[buttonIdx].style.backgroundColor = buttonColor;
+                colorValues[buttonIdx] = buttonColor;
+                colorButtons[buttonIdx].style.borderColor = getHighContrastRGBInversion(buttonColor);
+                buttonIdx++;
             }
-            colorArr.push(1);
-            let buttonColor = getRGBAFromArray(colorArr, false);
-            //console.log(buttonColor);
-            colorButtons[buttonIdx].style.backgroundColor = buttonColor;
-            colorValues[buttonIdx] = buttonColor;
-            colorButtons[buttonIdx].style.borderColor = getHighContrastRGBInversion(buttonColor);
-            buttonIdx++;
+        }
+    } else {
+        for (let i = 0; i < colorButtons.length; i++) {
+            colorButtons[i].style.backgroundColor = _newColorValues[i];
+            colorValues[i] = _newColorValues[i];
+            colorButtons[i].style.borderColor = getHighContrastRGBInversion(_newColorValues[i]);
         }
     }
 }
 
-function rerollColors() {
-    if (!stateManager.isAnimating)
-    {
+function rerollColors(_newColorValues) {
+    if (!stateManager.isAnimating) {
         let oldColorValues = [...colorValues];
-        initColors();
+        initColors(_newColorValues);
         let data = drawCtx.getImageData(0, 0, resolution, resolution).data;
         for (let i = 0; i < data.length; i += 4) {
             let paletteIdx = getPaletteIdxFromRGBA(getRGBAFromArray([data[i], 
@@ -205,7 +224,13 @@ function rerollColors() {
             //console.log(`i: ${i}; x: ${pixelPos.x}; y: ${pixelPos.y}`);
             drawCtx.fillRect(pixelPos.x, pixelPos.y, 1, 1);
         }
+        return oldColorValues;
     }
+}
+
+function rerollColorsWithUndo() {
+    redoStack = [];
+    animFrames.push({ palette: rerollColors(), type: "rerollColors" });
 }
 
 function getHighContrastRGBInversion(_rgba) {
@@ -243,11 +268,11 @@ function getPaletteIdxFromRGBA(_rgba, _paletteValues) {
 }
 
 function getPageX(_e) {
-    return _e.pageX || _e.changedTouches[0].pageX;
+    return _e.pageX ?? _e.changedTouches[0].pageX;
 }
 
 function getPageY(_e) {
-    return _e.pageY || _e.changedTouches[0].pageY;
+    return _e.pageY ?? _e.changedTouches[0].pageY;
 }
 
 function getPixelPosition(_pageX, _pageY) {
@@ -263,7 +288,7 @@ function getPixelPosition(_pageX, _pageY) {
 
 function clickDraw(_e) {
     _e.preventDefault();
-    console.log(_e);
+    //console.log(_e);
     if (stateManager.isBlockingInput()) return;
     _e.preventDefault();
     if (!stateManager.isAnimating) {
@@ -276,7 +301,7 @@ function clickDraw(_e) {
                 }
                 animFrames.pop();
                 fillCalls = 1;
-                let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
+                let pixelPos = getPixelPosition(getPageX(_e), getPageY(_e));
                 let oldPaletteIdx = getPaletteIdxFromRGBA(getRGBAFromPoint(pixelPos, drawCtx));
                 fill(pixelPos, oldPaletteIdx, stateManager.paletteIdx);
                 redoStack = [];
@@ -287,13 +312,16 @@ function clickDraw(_e) {
                 redoStack = [];
             }
         } else if (_e.button === 2) {
-
+            let rgba = getRGBAFromPoint(getPixelPosition(getPageX(_e), getPageY(_e)), drawCtx);
+            console.log(rgba);
+            updatePaletteIdx({ target: colorButtons[getPaletteIdxFromRGBA(rgba)]});
         }
     }
 }
 
 function dragDraw(_e) {
     //console.log(`drag draw enter`);
+    //console.log(_e);
     if (stateManager.isBlockingInput()) return;
     if (stateManager.clickHeld && !stateManager.isAnimating && 
         (animFrames[animFrames.length - 1].type === "drawLine" || 
@@ -454,7 +482,7 @@ function readKey(_e) {
 function setRes() {
     if (resInput.value === "") {
         initCanvas(getViewableSize(), parseInt(resInput.getAttribute("placeholder")), 
-                "rgba(255, 255, 255, 1)");
+                colorButtons.length - 1);
         resInput.setAttribute("placeholder", `${DEFAULT_RES}`);
     }
     else if (!parseInt(resInput.value) || parseInt(resInput.value) > 128 || 
@@ -463,7 +491,7 @@ function setRes() {
         resInput.setAttribute("placeholder", "Enter a number between 1 and 128");
     }
     else {
-        initCanvas(getViewableSize(), parseInt(resInput.value), "rgba(255, 255, 255, 1)");
+        initCanvas(getViewableSize(), parseInt(resInput.value), colorButtons.length - 1);
         resInput.setAttribute("placeholder", `${DEFAULT_RES}`);
     }
 }
@@ -512,13 +540,15 @@ function drawFrame(_frameNum, _context, _drawAllSubframes = false, _updateGrid =
         nextFrame++;
     } else if (animFrames[nextFrame].type === "fill") {
         if (_drawAllSubframes) drawSubframes(animFrames[nextFrame].pixel.length - 1);
-        else drawSubframes(Math.ceil(resolution * 1.5));
+        else drawSubframes(Math.ceil((resolution * resolution) / 15));
     } else if (animFrames[nextFrame].type === "drawPoint") {
         drawAnimPoint(animFrames[nextFrame].pixel[0], _context, _updateGrid);
         nextFrame++;
     } else if (animFrames[nextFrame].type === "drawLine") {
         if (_drawAllSubframes) drawSubframes(animFrames[nextFrame].pixel.length - 1);
         else drawSubframes(Math.ceil(resolution * 0.1));
+    } else {
+        nextFrame++;
     }
     if (nextFrame >= animFrames.length) {
         console.log(`nextFrame is 0`);
@@ -541,6 +571,7 @@ function setDrawFieldSize(_fieldSize) {
     overlayCanvas.height = _fieldSize;
     overlayCanvas.style.width = `${_fieldSize}px`;
     overlayCanvas.style.height = `${_fieldSize}px`;
+    canvasContainer.style.height = `${getViewableSize()}px`;
     setOverlayPosition();
     if (gridButton.classList.contains("depressed")) {
         hideGrid();
@@ -549,8 +580,16 @@ function setDrawFieldSize(_fieldSize) {
 }
 
 function getViewableSize() {
-    let height = window.innerHeight - menuBar.clientHeight - footer.clientHeight;
-    let width = window.innerWidth;
+    let height;
+    let width;
+    if (isMobile) {
+        height = window.innerHeight - menuBar.clientHeight - footer.clientHeight 
+                - getIntFromPx(palette.style.height);
+        width = window.innerWidth;
+    } else {
+        height = window.innerHeight - menuBar.clientHeight - footer.clientHeight;
+        width = window.innerWidth - getIntFromPx(palette.style.width);
+    }
     return height < width ? height : width;
 }
 
@@ -570,6 +609,10 @@ function drawCanvasImage(_context) {
         }
     }
     return _context;
+}
+
+function getIntFromPx(_px) {
+    return parseInt(_px.match(/[0-9]+/));
 }
 
 function getRfromRGBA(_rgbaStr) {
@@ -694,8 +737,6 @@ function exportGif() {
 }
 
 function setOverlayPosition() {
-    // overlayCanvas.style.transform = `translate(0, 
-    //         ${menuBar.clientHeight - window.scrollY}px)`;
     overlayCanvas.style.transform = `translate(${getViewableSize() * -1}px, 
             ${window.scrollY * -1}px)`;
 }
@@ -713,11 +754,14 @@ function toggleGrid() {
 }
 
 function showGrid() {
-    for (let x = 0; x <= resolution; x++) {
-        for (let y = 0; y <= resolution; y++) {
+    overlayCtx.strokeStyle = "rgba(0, 0, 0, 1)";
+    overlayCtx.strokeRect(0, 0, getViewableSize() - 0.5, getViewableSize() - 0.5);
+    for (let x = 0; x < resolution; x++) {
+        for (let y = 0; y < resolution; y++) {
             updateGridPoint({ x: x, y: y });
         }
     }
+    console.log(`viewableSize: ${getViewableSize()}`);
 }
 
 function hideGrid() {
@@ -727,7 +771,7 @@ function hideGrid() {
 
 function updateGridPoint(_pixelPos) {
     let viewable = getViewableSize();
-    let increment = (viewable) * (1.02 / resolution);
+    let increment = (viewable) * (1 / resolution);
     let drawPosX = Math.round((viewable - 1) * (_pixelPos.x / resolution));
     let drawPosY = Math.round((viewable - 1) * (_pixelPos.y / resolution));
     let pixDat = drawCtx.getImageData(_pixelPos.x, _pixelPos.y, 1, 1).data;
@@ -746,15 +790,19 @@ function updateGridPoint(_pixelPos) {
 function undo() {
     if (animFrames.length > 1 && !stateManager.isAnimating) {
         //for (let pixel of animFrames[animFrames.length - 1].pixel) {
-        for (i = animFrames[animFrames.length - 1].pixel.length - 1; i >= 0; i--) {
-            let pixel = animFrames[animFrames.length - 1].pixel[i];
-            //console.log(`undoing`);
-            drawCtx.fillStyle = getRGBAFromPaletteIdx(pixel.oldPaletteIdx);
-            //console.log(`oldColor: ${pixel.oldColor}`);
-            drawCtx.fillRect(pixel.position.x, pixel.position.y, 1, 1);
-            if (gridButton.classList.contains("depressed")) {
-                updateGridPoint(pixel.position);
+        if (animFrames[animFrames.length - 1].type != "rerollColors") {
+            for (i = animFrames[animFrames.length - 1].pixel.length - 1; i >= 0; i--) {
+                let pixel = animFrames[animFrames.length - 1].pixel[i];
+                //console.log(`undoing`);
+                drawCtx.fillStyle = getRGBAFromPaletteIdx(pixel.oldPaletteIdx);
+                //console.log(`oldColor: ${pixel.oldColor}`);
+                drawCtx.fillRect(pixel.position.x, pixel.position.y, 1, 1);
+                if (gridButton.classList.contains("depressed")) {
+                    updateGridPoint(pixel.position);
+                }
             }
+        } else {
+            animFrames[animFrames.length - 1].palette = rerollColors(animFrames[animFrames.length - 1].palette);
         }
         redoStack.push(animFrames.pop());
     }
@@ -763,7 +811,11 @@ function undo() {
 function redo() {
     if (redoStack.length > 0 && !stateManager.isAnimating) {
         animFrames.push(redoStack.pop());
-        drawFrame([animFrames.length - 1, 0], drawCtx, true);
+        if (animFrames[animFrames.length - 1].type != "rerollColors") {
+            drawFrame([animFrames.length - 1, 0], drawCtx, true);
+        } else {
+            animFrames[animFrames.length - 1].palette = rerollColors(animFrames[animFrames.length - 1].palette);
+        }
     }
 }
 
@@ -821,7 +873,7 @@ function initListeners() {
     gifButton.addEventListener("click", exportGif);
     undoButton.addEventListener("click", undo);
     redoButton.addEventListener("click", redo);
-    rerollButton.addEventListener("click", rerollColors);
+    rerollButton.addEventListener("click", rerollColorsWithUndo);
     // Window actions
     document.addEventListener("contextmenu", (_e) => {
         _e.preventDefault();

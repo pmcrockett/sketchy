@@ -4,7 +4,7 @@
     font-family: monospace;
 }
 
-* .mobile {
+*.mobile {
  font-size: 50px;
 }
 
@@ -25,7 +25,7 @@ input {
     width: 75px;
 }
 
-.mobile .anim-button {
+.mobile.anim-button {
     width: 300px;
 }
 
@@ -72,6 +72,11 @@ button:active, button.depressed {
     display: flex;
 }
 
+.mobile.workspace {
+    flex-direction: column;
+    align-items: center;
+}
+
 div > button.color {
     height: 32px;
     width: 32px;
@@ -80,13 +85,24 @@ div > button.color {
     border-width: 0;
 }
 
+div > button.mobile.color {
+    width: 12.45vw;
+}
+
 div > button.picked {
     border-width: 3px;
+}
+
+div > button.mobile.picked {
+    border-width: 6px;
 }
 
 .palette {
     display: flex;
     flex-direction: column;
     flex-wrap: wrap;
-    height: 256px;
+}
+
+.mobile.palette {
+    flex-direction: row;
 }
