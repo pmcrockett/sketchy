@@ -10,6 +10,7 @@ Custom cursor
 const DEFAULT_RES = 32;
 const BG_COLOR = `rgb(206, 206, 206)`;
 const DRAW_COLOR = `rgb(90, 90, 90)`;
+const DBLCLICK_INTERVAL = 350;
 let menuBar = document.querySelector(".menu-bar");
 let footer = document.querySelector(".footer");
 let drawField = document.querySelector(".draw-field");
@@ -51,6 +52,8 @@ class StateManager {
         this.clickHeld = false;
         this.isDrawingLine = false;
         this.isDrawingPoint = false;
+        this.isDblClick = false;
+        this.lastClickTime = -1;
     }
 
     isBlockingInput() {
@@ -81,6 +84,19 @@ class StateManager {
             enablebuttons();
         }
         this._isFilling = _bool;
+    }
+
+    checkDblClick() {
+        if (performance.now() - this.lastClickTime <= DBLCLICK_INTERVAL) {
+            this.isDblClick = true;
+        }
+        this.lastClickTime = performance.now();
+        return this.isDblClick;
+    }
+
+    resetDblClick() {
+        this.isDblClick = false;
+        this.lastClickTime = -1;
     }
 }
 
@@ -140,25 +156,36 @@ function getPixelPosition(_pageX, _pageY) {
 
 function clickDraw(_e) {
     _e.preventDefault();
-    //console.log(_e);
+    console.log(_e);
     if (stateManager.isBlockingInput()) return;
     _e.preventDefault();
     if (!stateManager.isAnimating) {
-        if (_e.type === "dblclick" && _e.button === 0) {
-            undo();
-            // fillCalls = 1;
-            // fillPixels = [];
-            // let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
-            // let oldColorArr = drawCtx.getImageData(pixelPos.x, pixelPos.y, 
-            //         1, 1).data;
-            // let oldColor = getRGBAFromArray(oldColorArr, true);
-            // fill(pixelPos, oldColor, "rgba(0, 0, 0, 1)");
-            // redoStack = [];
-        } else if (_e.button === 0 || _e.changedTouches) {
-            stateManager.clickHeld = true;
-            stateManager.isDrawingPoint = true;
-            drawPoint(_e, "rgba(0, 0, 0, 1)");
-            redoStack = [];
+        /*if (_e.type === "dblclick" && _e.button === 0) {
+
+        } else*/ if (_e.button === 0 || _e.changedTouches) {
+            if (stateManager.checkDblClick() && 
+                    animFrames[animFrames.length - 1].type === "drawPoint") {
+                // for (let i = pixelBuffer.length - 1; i >= 0; i--) {
+                //     drawCtx.fillStyle = pixelBuffer[i].oldColor;
+                //     drawCtx.fillRect(pixelBuffer[i].position.x, pixelBuffer[i].position.y, 1, 1);
+                //     //console.log(pixel.oldColor);
+                // }
+                let pixelPos = animFrames[animFrames.length - 1].pixel[0].position;
+                drawCtx.fillStyle = animFrames[animFrames.length - 1].pixel[0].oldColor;
+                drawCtx.fillRect(animFrames[animFrames.length - 1].pixel[0].position.x, 
+                        animFrames[animFrames.length - 1].pixel[0].position.y, 1, 1);
+                animFrames.pop();
+                fillCalls = 1;
+                //let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
+                let oldColor = getRGBAFromPoint(pixelPos, drawCtx);
+                fill(pixelPos, oldColor, "rgba(0, 0, 0, 1)");
+                redoStack = [];
+            } else {
+                stateManager.clickHeld = true;
+                stateManager.isDrawingPoint = true;
+                drawPoint(_e, "rgba(0, 0, 0, 1)");
+                redoStack = [];
+            }
         } else if (_e.button === 2) {
 
         }
@@ -284,18 +311,16 @@ function fill(_pixelPos, _oldColor, _newColor) {
         pixel.data[1] != oldColorArray[1] ||
         pixel.data[2] != oldColorArray[2] ||
         pixel.data[3] != Math.round(oldColorArray[3] * 255)) {
-        /*
-        console.log(`ending fill because pixel is wrong color`);
-        console.log(`pixel.data[0]: ${pixel.data[0]}`);
-        console.log(`oldColorArray[0]: ${oldColorArray[0]}`);
-        console.log(`pixel.data[1]: ${pixel.data[1]}`);
-        console.log(`oldColorArray[1]: ${oldColorArray[1]}`);
-        console.log(`pixel.data[2]: ${pixel.data[2]}`);
-        console.log(`oldColorArray[2]: ${oldColorArray[2]}`);
-        console.log(`pixel.data[3]: ${pixel.data[3]}`);
-        console.log(`oldColorArray[3]: ${Math.round(oldColorArray[3] * 255)}`);
-        console.log(`pixelPosX: ${_pixelPos.x}, pixelPosY: ${_pixelPos.y}`);
-        */
+        //console.log(`ending fill because pixel is wrong color; fillCalls: ${fillCalls}`);
+        // console.log(`pixel.data[0]: ${pixel.data[0]}`);
+        // console.log(`oldColorArray[0]: ${oldColorArray[0]}`);
+        // console.log(`pixel.data[1]: ${pixel.data[1]}`);
+        // console.log(`oldColorArray[1]: ${oldColorArray[1]}`);
+        // console.log(`pixel.data[2]: ${pixel.data[2]}`);
+        // console.log(`oldColorArray[2]: ${oldColorArray[2]}`);
+        // console.log(`pixel.data[3]: ${pixel.data[3]}`);
+        // console.log(`oldColorArray[3]: ${Math.round(oldColorArray[3] * 255)}`);
+        // console.log(`pixelPosX: ${_pixelPos.x}, pixelPosY: ${_pixelPos.y}`);
         //console.log(pixel.data);
         //console.log(getArrayFromRGBA(_oldColor));
 
@@ -303,7 +328,7 @@ function fill(_pixelPos, _oldColor, _newColor) {
         return;
     }
     else {
-        //console.log(`drawing fill pixel`);
+        //console.log(`drawing fill pixel; fillCalls: ${fillCalls}`);
         stateManager.isFilling = true;
         drawCtx.fillStyle = _newColor;
         drawCtx.fillRect(_pixelPos.x, _pixelPos.y, 1, 1);
@@ -319,8 +344,8 @@ function fill(_pixelPos, _oldColor, _newColor) {
             }, 0);
         }
     }
-    closeFillCall();
     pixelBuffer.push({ position: _pixelPos, color: _newColor, oldColor: _oldColor });
+    closeFillCall();
 }
 
 function readKey(_e) {
@@ -618,24 +643,13 @@ function updateGridPoint(_pixelPos) {
 }
 
 function undo() {
-    /*
-    if (animFrames.length > 1) {
-        redoStack.push(animFrames.pop());
-        console.log(animFrames.length);
-        let nextFrame = [0, 0];
-        do {
-            nextFrame = drawFrame(nextFrame, drawCtx, true, false);
-        } while (nextFrame[0] > 0 && animFrames.length > 1);
-        if (gridButton.classList.contains("depressed")) showGrid();
-    }
-    */
     if (animFrames.length > 1) {
         //for (let pixel of animFrames[animFrames.length - 1].pixel) {
         for (i = animFrames[animFrames.length - 1].pixel.length - 1; i >= 0; i--) {
             let pixel = animFrames[animFrames.length - 1].pixel[i];
-            console.log(`undoing`);
+            //console.log(`undoing`);
             drawCtx.fillStyle = pixel.oldColor;
-            console.log(`oldColor: ${pixel.oldColor}`);
+            //console.log(`oldColor: ${pixel.oldColor}`);
             drawCtx.fillRect(pixel.position.x, pixel.position.y, 1, 1);
             if (gridButton.classList.contains("depressed")) {
                 updateGridPoint(pixel.position);
@@ -653,17 +667,22 @@ function redo() {
 }
 
 function endDraw(_e) {
-    if (_e.button === 0) {
+    //console.log(_e);
+    if (_e.button === 0 || _e.changedTouches[0]) {
         stateManager.clickHeld = false;
         if (stateManager.isDrawingPoint) {
             stateManager.isDrawingPoint = false;
-            animFrames.push({ pixel: pixelBuffer, type: "drawPoint" });
-            pixelBuffer = [];
+            if (!stateManager.isDblClick) {
+                animFrames.push({ pixel: pixelBuffer, type: "drawPoint" });
+                pixelBuffer = [];
+            }
         } else if (stateManager.isDrawingLine) {
             stateManager.isDrawingLine = false;
             animFrames.push({ pixel: pixelBuffer, type: "drawLine" });
             pixelBuffer = [];
         }
+        if (stateManager.isDblClick) stateManager.resetDblClick();
+        console.log(stateManager);
     }
     console.log(animFrames);
 }
@@ -690,7 +709,7 @@ function initListeners() {
     document.addEventListener("mouseup", endDraw);
     document.addEventListener("touchend", endDraw);
     overlayCanvas.addEventListener("mousedown", clickDraw);
-    overlayCanvas.addEventListener("dblclick", clickDraw);
+    //overlayCanvas.addEventListener("dblclick", clickDraw);
     overlayCanvas.addEventListener("touchstart", clickDraw);
     overlayCanvas.addEventListener("mousemove", dragDraw);
     overlayCanvas.addEventListener("touchmove", dragDraw);
