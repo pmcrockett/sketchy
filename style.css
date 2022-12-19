@@ -65,4 +65,28 @@ button:active, button.depressed {
 .overlay {
     position: fixed;
     z-index: 1500;
+    cursor: crosshair;
+}
+
+.workspace {
+    display: flex;
+}
+
+div > button.color {
+    height: 32px;
+    width: 32px;
+    cursor: pointer;
+    border-style: solid;
+    border-width: 0;
+}
+
+div > button.picked {
+    border-width: 3px;
+}
+
+.palette {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    height: 256px;
 }

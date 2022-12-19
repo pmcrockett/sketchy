@@ -1,10 +1,9 @@
 /* TODO:
 Add multi-color support
 More flexible resolutions
-Undo/redo
 Zoom
 Layers?
-Custom cursor
+Save/open project file
 */
 
 const DEFAULT_RES = 32;
@@ -15,6 +14,7 @@ let menuBar = document.querySelector(".menu-bar");
 let footer = document.querySelector(".footer");
 let drawField = document.querySelector(".draw-field");
 let overlayCanvas = document.querySelector(".overlay");
+let palette = document.querySelector(".palette");
 let resInput = document.getElementById("resolution");
 let resButton = document.querySelector(".res-button");
 let animButton = document.querySelector(".anim-button");
@@ -23,6 +23,7 @@ let gifButton = document.querySelector(".gif-button");
 let gridButton = document.querySelector(".grid-button");
 let undoButton = document.querySelector(".undo-button");
 let redoButton = document.querySelector(".redo-button");
+let rerollButton = document.querySelector(".reroll-button");
 let buttons = [resButton, animButton, pngButton, gifButton, gridButton, 
         undoButton, redoButton];
 let drawCtx;
@@ -35,14 +36,14 @@ let resolution;
 let fillCalls;
 let lastPixelPos = {};
 let animFrames = [];
-let isAnimating = false;
 let animTimer;
-let isExporting = false;
 let exportingSquare;
 let lineCooldown = false;
 let pixelBuffer = [];
 let redoStack = [];
 let isMobile = false;
+let colorButtons = [];
+let colorValues = [];
 
 class StateManager {
     constructor() {
@@ -54,6 +55,8 @@ class StateManager {
         this.isDrawingPoint = false;
         this.isDblClick = false;
         this.lastClickTime = -1;
+        this.paletteIdx;
+        this.paletteButton;
     }
 
     isBlockingInput() {
@@ -114,7 +117,7 @@ function enablebuttons() {
     }
 }
 
-function initCanvas(_fieldSize, _resolution, _color) {
+function initCanvas(_fieldSize, _resolution, _paletteIdx) {
     resolution = _resolution;
     if (stateManager.isAnimating) toggleAnimating();
     drawField.width = resolution;
@@ -124,7 +127,7 @@ function initCanvas(_fieldSize, _resolution, _color) {
     drawCtx.webkitImageSmoothingEnabled = false;
     drawCtx.msImageSmoothingEnabled = false;
     drawCtx.imageSmoothingEnabled = false;
-    drawCtx.fillStyle = _color;
+    drawCtx.fillStyle = getRGBAFromPaletteIdx(_paletteIdx);
     drawCtx.fillRect(0, 0, resolution, resolution);
     overlayCtx = overlayCanvas.getContext("2d");
     overlayCtx.clearRect(0, 0, _fieldSize, _fieldSize);
@@ -133,6 +136,110 @@ function initCanvas(_fieldSize, _resolution, _color) {
     basisCtx = animBasis.getContext("2d");
     basisCtx.drawImage(drawField, 0, 0);
     animFrames = [{ pixel: [], type: "init" }];
+}
+
+function initPalette() {
+    for (let i = 0; i < 32; i++) {
+        let button = document.createElement("button");
+        button.classList.add(`color`);
+        button.classList.add(`${i}`);
+        palette.appendChild(button);
+        colorButtons.push(button);
+        button.addEventListener("click", updatePaletteIdx);
+    }
+    initColors();
+    updatePaletteIdx({ target: colorButtons[0] });
+}
+
+function initColors() {
+    let types = ["iColor", "jColor", "exponentColor"];
+    let rndOrder = [];
+    for (let i = 3; i > 0; i--) {
+        rndOrder.push(...types.splice(Math.floor(Math.random() * i), 1));
+    }
+    console.log(rndOrder);
+    let exponent = Math.random() + 0.5;
+    if (exponent >= 1) {
+        exponent = (exponent - 1) * 8 + 1;
+    }
+    console.log(exponent);
+    let buttonIdx = 0;
+    for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 8; j++) {
+            let colorArr = [];
+            for (let type of rndOrder) {
+                if (type === "iColor") {
+                    colorArr.push(Math.round(255 * (i / 3)));
+                } else if (type === "jColor") {
+                    colorArr.push(Math.round(255 * (j / 7)));
+                } else {
+                    colorArr.push(Math.round(255 * ((j / 7) ** exponent)));
+                }
+            }
+            colorArr.push(1);
+            let buttonColor = getRGBAFromArray(colorArr, false);
+            //console.log(buttonColor);
+            colorButtons[buttonIdx].style.backgroundColor = buttonColor;
+            colorValues[buttonIdx] = buttonColor;
+            colorButtons[buttonIdx].style.borderColor = getHighContrastRGBInversion(buttonColor);
+            buttonIdx++;
+        }
+    }
+}
+
+function rerollColors() {
+    if (!stateManager.isAnimating)
+    {
+        let oldColorValues = [...colorValues];
+        initColors();
+        let data = drawCtx.getImageData(0, 0, resolution, resolution).data;
+        for (let i = 0; i < data.length; i += 4) {
+            let paletteIdx = getPaletteIdxFromRGBA(getRGBAFromArray([data[i], 
+                    data[i + 1], data[i + 2], data[i + 3]], true), oldColorValues);
+            //console.log(`paletteIdx: ${paletteIdx}`);
+            drawCtx.fillStyle = getRGBAFromPaletteIdx(paletteIdx);
+            let pixelPos = {
+                x: Math.floor((i / 4) % resolution),
+                y: Math.floor((i / 4) / resolution)
+            }
+            //console.log(`i: ${i}; x: ${pixelPos.x}; y: ${pixelPos.y}`);
+            drawCtx.fillRect(pixelPos.x, pixelPos.y, 1, 1);
+        }
+    }
+}
+
+function getHighContrastRGBInversion(_rgba) {
+    let colorArr = getArrayFromRGBA(_rgba);
+    for (let i = 0; i < 3; i++) {
+        colorArr[i] = 255 - colorArr[i];
+        if (colorArr[i] < 192 && colorArr[i] > 128) colorArr[i] = 192;
+        else if (colorArr[i] > 64 && colorArr[i] <= 128) colorArr[i] = 64;
+    }
+    return getRGBAFromArray(colorArr, false);
+}
+
+function updatePaletteIdx(_e) {
+    if (stateManager.paletteButton) {
+        stateManager.paletteButton.classList.remove("picked");
+    }
+    _e.target.classList.add("picked");
+    stateManager.paletteIdx = parseInt(_e.target.classList[1]);
+    stateManager.paletteButton = _e.target;
+}
+
+function getRGBAFromPaletteIdx(_idx) {
+    //console.log(`paletteIdx: ${_idx}`);
+    //console.log(colorButtons[_idx].style.backgroundColor);
+    return colorValues[_idx];
+}
+
+function getPaletteIdxFromRGBA(_rgba, _paletteValues) {
+    if (!_paletteValues) _paletteValues = colorValues;
+    //console.log(`_rgba: ${_rgba}`);
+    for (let i = 0; i < _paletteValues.length; i++) {
+        //console.log(`paletteColor ${i}: ${colorButtons[i].style.backgroundColor}`);
+        if (_paletteValues[i] == _rgba) return i;
+    }
 }
 
 function getPageX(_e) {
@@ -160,30 +267,23 @@ function clickDraw(_e) {
     if (stateManager.isBlockingInput()) return;
     _e.preventDefault();
     if (!stateManager.isAnimating) {
-        /*if (_e.type === "dblclick" && _e.button === 0) {
-
-        } else*/ if (_e.button === 0 || _e.changedTouches) {
-            if (stateManager.checkDblClick() && 
-                    animFrames[animFrames.length - 1].type === "drawPoint") {
-                // for (let i = pixelBuffer.length - 1; i >= 0; i--) {
-                //     drawCtx.fillStyle = pixelBuffer[i].oldColor;
-                //     drawCtx.fillRect(pixelBuffer[i].position.x, pixelBuffer[i].position.y, 1, 1);
-                //     //console.log(pixel.oldColor);
-                // }
-                let pixelPos = animFrames[animFrames.length - 1].pixel[0].position;
-                drawCtx.fillStyle = animFrames[animFrames.length - 1].pixel[0].oldColor;
-                drawCtx.fillRect(animFrames[animFrames.length - 1].pixel[0].position.x, 
-                        animFrames[animFrames.length - 1].pixel[0].position.y, 1, 1);
+        if (_e.button === 0 || _e.changedTouches) {
+            if (stateManager.checkDblClick()) {
+                for (let i = animFrames[animFrames.length - 1].pixel.length - 1; i >= 0; i--) {
+                    let pixel = animFrames[animFrames.length - 1].pixel[i];
+                    drawCtx.fillStyle = getRGBAFromPaletteIdx(pixel.oldPaletteIdx);
+                    drawCtx.fillRect(pixel.position.x, pixel.position.y, 1, 1);
+                }
                 animFrames.pop();
                 fillCalls = 1;
-                //let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
-                let oldColor = getRGBAFromPoint(pixelPos, drawCtx);
-                fill(pixelPos, oldColor, "rgba(0, 0, 0, 1)");
+                let pixelPos = getPixelPosition(_e.pageX, _e.pageY);
+                let oldPaletteIdx = getPaletteIdxFromRGBA(getRGBAFromPoint(pixelPos, drawCtx));
+                fill(pixelPos, oldPaletteIdx, stateManager.paletteIdx);
                 redoStack = [];
             } else {
                 stateManager.clickHeld = true;
                 stateManager.isDrawingPoint = true;
-                drawPoint(_e, "rgba(0, 0, 0, 1)");
+                drawPoint(_e, stateManager.paletteIdx);
                 redoStack = [];
             }
         } else if (_e.button === 2) {
@@ -201,25 +301,26 @@ function dragDraw(_e) {
         //console.log(animFrames[animFrames.length - 1].type);
         stateManager.isDrawingPoint = false;
         stateManager.isDrawingLine = true;
-        drawLine(lastPixelPos, _e, "rgba(0, 0, 0, 1)");
+        drawLine(lastPixelPos, _e, stateManager.paletteIdx);
         redoStack = [];
         //console.log(`drag draw`);
         //drawPoint(_e);
     }
 }
 
-function drawPoint(_e, _color) {
+function drawPoint(_e, _paletteIdx) {
     let pixelPos = getPixelPosition(getPageX(_e), getPageY(_e));
-    let oldColor = getRGBAFromPoint(pixelPos, drawCtx);
-    drawCtx.fillStyle = _color;
+    //let oldColor = getRGBAFromPoint(pixelPos, drawCtx);
+    let oldPaletteIdx = getPaletteIdxFromRGBA(getRGBAFromPoint(pixelPos, drawCtx));
+    drawCtx.fillStyle = getRGBAFromPaletteIdx(_paletteIdx);
     drawCtx.fillRect(pixelPos.x, pixelPos.y, 1, 1);
     if (gridButton.classList.contains("depressed")) updateGridPoint(pixelPos);
     lastPixelPos = pixelPos;
-    pixelBuffer.push({ position: pixelPos, color: _color, oldColor: oldColor });
+    pixelBuffer.push({ position: pixelPos, paletteIdx: _paletteIdx, oldPaletteIdx: oldPaletteIdx });
 }
 
 function drawAnimPoint(_pixel, _context, _updateGrid = true) {
-    _context.fillStyle = _pixel.color;
+    _context.fillStyle = getRGBAFromPaletteIdx(_pixel.paletteIdx);
     _context.fillRect(_pixel.position.x, _pixel.position.y, 1, 1);
     if (_updateGrid && gridButton.classList.contains("depressed")) {
         updateGridPoint(_pixel.position);
@@ -229,7 +330,7 @@ function drawAnimPoint(_pixel, _context, _updateGrid = true) {
 /* This function is necessary to fix a problem where lag causes skips in what
 should be a continuously drawn line. We're playing connect-the-dots between 
 known cursor positions, basically. */
-function drawLine(_oldPixelPos, _e, _color) {
+function drawLine(_oldPixelPos, _e, _paletteIdx) {
     /* drawLine may be preceded by drawPoint because we can't know the 
     user's intent initially. If they go on to draw a line, we move the animFrame 
     that we drew for the initial point into the line's animFrame. */
@@ -239,7 +340,7 @@ function drawLine(_oldPixelPos, _e, _color) {
     }
     */
     let pixelPos = getPixelPosition(getPageX(_e), getPageY(_e));
-    drawCtx.fillStyle = _color;
+    drawCtx.fillStyle = getRGBAFromPaletteIdx(_paletteIdx);
     let xDist = Math.abs(pixelPos.x - _oldPixelPos.x);
     let yDist = Math.abs(pixelPos.y - _oldPixelPos.y);
     let hypot = Math.sqrt(xDist ** 2 + yDist ** 2);
@@ -255,19 +356,19 @@ function drawLine(_oldPixelPos, _e, _color) {
         else linePos.x = move.left;
         if (_oldPixelPos.y < pixelPos.y) linePos.y = move.down;
         else linePos.y = move.up;
-        let oldColor = getRGBAFromPoint(linePos, drawCtx);
+        let oldPaletteIdx = getPaletteIdxFromRGBA(getRGBAFromPoint(linePos, drawCtx));
         drawCtx.fillRect(linePos.x, linePos.y, 1, 1);
         if (gridButton.classList.contains("depressed")) updateGridPoint(linePos);
-        pixelBuffer.push({ position: linePos, color: _color, oldColor: oldColor });
+        pixelBuffer.push({ position: linePos, paletteIdx: _paletteIdx, oldPaletteIdx: oldPaletteIdx });
     }
     lastPixelPos = pixelPos;
     //animFrames.push({ pixel: pixels, type: "drawLine" });
 }
 
-function fill(_pixelPos, _oldColor, _newColor) {
+function fill(_pixelPos, _oldPaletteIdx, _paletteIdx) {
     //console.log(`entering fill (calls: ${fillCalls})`);
-    if (_oldColor === _newColor) {
-        pixelBuffer = [{ position: _pixelPos, color: _newColor, oldColor: _oldColor }];
+    if (_oldPaletteIdx === _paletteIdx) {
+        pixelBuffer = [{ position: _pixelPos, paletteIdx: _paletteIdx, oldPaletteIdx: _oldPaletteIdx }];
         closeFillCall();
         return;
     }
@@ -280,7 +381,7 @@ function fill(_pixelPos, _oldColor, _newColor) {
         // Randomize direction order because it looks cool
         while (dirArr.length) {
             let rnd = Math.floor(Math.random() * dirArr.length);
-            fill(dirArr[rnd], _oldColor, _newColor);
+            fill(dirArr[rnd], _oldPaletteIdx, _paletteIdx);
             dirArr.splice(rnd, 1);
         }
         /*
@@ -305,12 +406,9 @@ function fill(_pixelPos, _oldColor, _newColor) {
             closeFillCall();
             return;
         }
-    let pixel = drawCtx.getImageData(_pixelPos.x, _pixelPos.y, 1, 1);
-    oldColorArray = getArrayFromRGBA(_oldColor);
-    if (pixel.data[0] != oldColorArray[0] ||
-        pixel.data[1] != oldColorArray[1] ||
-        pixel.data[2] != oldColorArray[2] ||
-        pixel.data[3] != Math.round(oldColorArray[3] * 255)) {
+    let pixelColor = getRGBAFromPoint(_pixelPos, drawCtx);
+    let oldColor = getRGBAFromPaletteIdx(_oldPaletteIdx);
+    if (pixelColor != oldColor) {
         //console.log(`ending fill because pixel is wrong color; fillCalls: ${fillCalls}`);
         // console.log(`pixel.data[0]: ${pixel.data[0]}`);
         // console.log(`oldColorArray[0]: ${oldColorArray[0]}`);
@@ -330,7 +428,7 @@ function fill(_pixelPos, _oldColor, _newColor) {
     else {
         //console.log(`drawing fill pixel; fillCalls: ${fillCalls}`);
         stateManager.isFilling = true;
-        drawCtx.fillStyle = _newColor;
+        drawCtx.fillStyle = getRGBAFromPaletteIdx(_paletteIdx);
         drawCtx.fillRect(_pixelPos.x, _pixelPos.y, 1, 1);
         if (gridButton.classList.contains("depressed")) updateGridPoint(_pixelPos);
         //returnPixel.push({ position: _pixelPos, color: _newColor });
@@ -344,7 +442,7 @@ function fill(_pixelPos, _oldColor, _newColor) {
             }, 0);
         }
     }
-    pixelBuffer.push({ position: _pixelPos, color: _newColor, oldColor: _oldColor });
+    pixelBuffer.push({ position: _pixelPos, paletteIdx: _paletteIdx, oldPaletteIdx: _oldPaletteIdx });
     closeFillCall();
 }
 
@@ -538,6 +636,7 @@ function endExport() {
     //grid[0][0].classList.remove("exporting");
     //grid[0][0].textContent = "";
     overlayCtx.clearRect(0, 0, getViewableSize(), getViewableSize());
+    if (gridButton.classList.contains("depressed")) showGrid();
     setTimeout(() => {
         stateManager.isExporting = false;
     }, 500);
@@ -595,8 +694,10 @@ function exportGif() {
 }
 
 function setOverlayPosition() {
-    overlayCanvas.style.transform = `translate(0, 
-            ${menuBar.clientHeight - window.scrollY}px)`;
+    // overlayCanvas.style.transform = `translate(0, 
+    //         ${menuBar.clientHeight - window.scrollY}px)`;
+    overlayCanvas.style.transform = `translate(${getViewableSize() * -1}px, 
+            ${window.scrollY * -1}px)`;
 }
 
 function toggleGrid() {
@@ -630,25 +731,25 @@ function updateGridPoint(_pixelPos) {
     let drawPosX = Math.round((viewable - 1) * (_pixelPos.x / resolution));
     let drawPosY = Math.round((viewable - 1) * (_pixelPos.y / resolution));
     let pixDat = drawCtx.getImageData(_pixelPos.x, _pixelPos.y, 1, 1).data;
-    for (let i = 0; i < 3; i++) {
-        if (_pixelPos.x === resolution || _pixelPos.y === resolution) {
-            pixDat[i] = 0;
-        } else pixDat[i] = 255 - pixDat[i];
-    }
-    pixDat[3] = 1;
-    overlayCtx.fillStyle = getRGBAFromArray(pixDat);
+    // for (let i = 0; i < 3; i++) {
+    //     if (_pixelPos.x === resolution || _pixelPos.y === resolution) {
+    //         pixDat[i] = 0;
+    //     } else pixDat[i] = 255 - pixDat[i];
+    // }
+    // pixDat[3] = 1;
+    overlayCtx.fillStyle = getHighContrastRGBInversion(getRGBAFromArray(pixDat));
     let lineWidth = isMobile ? 2 : 1;
     overlayCtx.fillRect(drawPosX, drawPosY, lineWidth, increment);
     overlayCtx.fillRect(drawPosX, drawPosY, increment, lineWidth);
 }
 
 function undo() {
-    if (animFrames.length > 1) {
+    if (animFrames.length > 1 && !stateManager.isAnimating) {
         //for (let pixel of animFrames[animFrames.length - 1].pixel) {
         for (i = animFrames[animFrames.length - 1].pixel.length - 1; i >= 0; i--) {
             let pixel = animFrames[animFrames.length - 1].pixel[i];
             //console.log(`undoing`);
-            drawCtx.fillStyle = pixel.oldColor;
+            drawCtx.fillStyle = getRGBAFromPaletteIdx(pixel.oldPaletteIdx);
             //console.log(`oldColor: ${pixel.oldColor}`);
             drawCtx.fillRect(pixel.position.x, pixel.position.y, 1, 1);
             if (gridButton.classList.contains("depressed")) {
@@ -660,7 +761,7 @@ function undo() {
 }
 
 function redo() {
-    if (redoStack.length > 0) {
+    if (redoStack.length > 0 && !stateManager.isAnimating) {
         animFrames.push(redoStack.pop());
         drawFrame([animFrames.length - 1, 0], drawCtx, true);
     }
@@ -670,18 +771,17 @@ function endDraw(_e) {
     //console.log(_e);
     if (_e.button === 0 || _e.changedTouches[0]) {
         stateManager.clickHeld = false;
-        if (stateManager.isDrawingPoint) {
+        if (stateManager.isDblClick) {
+            stateManager.resetDblClick();
+        } else if (stateManager.isDrawingPoint) {
             stateManager.isDrawingPoint = false;
-            if (!stateManager.isDblClick) {
-                animFrames.push({ pixel: pixelBuffer, type: "drawPoint" });
-                pixelBuffer = [];
-            }
+            animFrames.push({ pixel: pixelBuffer, type: "drawPoint" });
+            pixelBuffer = [];
         } else if (stateManager.isDrawingLine) {
             stateManager.isDrawingLine = false;
             animFrames.push({ pixel: pixelBuffer, type: "drawLine" });
             pixelBuffer = [];
         }
-        if (stateManager.isDblClick) stateManager.resetDblClick();
         console.log(stateManager);
     }
     console.log(animFrames);
@@ -721,6 +821,7 @@ function initListeners() {
     gifButton.addEventListener("click", exportGif);
     undoButton.addEventListener("click", undo);
     redoButton.addEventListener("click", redo);
+    rerollButton.addEventListener("click", rerollColors);
     // Window actions
     document.addEventListener("contextmenu", (_e) => {
         _e.preventDefault();
@@ -734,8 +835,9 @@ function initListeners() {
 // Program execution
 const stateManager = new StateManager();
 if (checkIfMobile()) initMobile();
+initPalette();
 initCanvas(getViewableSize(), parseInt(resInput.getAttribute("placeholder")), 
-    "rgba(255, 255, 255, 1)");
+    colorButtons.length - 1);
 initListeners();
 
 // Debug
