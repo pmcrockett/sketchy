@@ -1,6 +1,6 @@
 # sketchy
 
-<img src="./images/sketchy1.gif" width="200" />
+<img src="./images/sketchy1.gif" width="100" />
 
 Live version at https://github.com/pmcrockett/sketchy
 
